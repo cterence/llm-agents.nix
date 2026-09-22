@@ -157,6 +157,17 @@ let
     };
   };
 
+  # The app and the harness python overlay below must move in lockstep: vibe
+  # 2.25.7 reads SessionPin.REASONING_EFFORT, which the 0.5.1 harness wheel
+  # predates (the wheel's python half is built from an older vibe tree).
+  vibeVersion = "2.25.7";
+  vibeSrc = fetchFromGitHub {
+    owner = "mistralai";
+    repo = "mistral-vibe";
+    tag = "v${vibeVersion}";
+    hash = "sha256-EcrMo0D9ck/XJhuhYnCiUTKF52pHxQL7XowC2CL3QFk=";
+  };
+
   # Closed-source wheel, imported unconditionally at startup since 2.25.5 (#9563).
   harnessWheels = {
     x86_64-linux = {
@@ -203,6 +214,18 @@ let
     pythonRelaxDeps = [ "certifi" ];
     pythonImportsCheck = [ "mistralai_vibe_local_harness" ];
 
+    # The wheel lags the vibe release: its python half misses pins the app
+    # reads at startup (REASONING_EFFORT since 2.25.7). Upstream ships the
+    # harness python files in the vibe source tree and the native API
+    # (_native.pyi) is unchanged between the two, so overlay the packaged
+    # vibe tree's python half onto the wheel install and keep its prebuilt
+    # _native.abi3.so.
+    postInstall = ''
+      harnessDir=$out/${python.sitePackages}/mistralai_vibe_local_harness
+      cp -r ${vibeSrc}/harness/runtimes/python/python/mistralai_vibe_local_harness/. "$harnessDir"/
+      find "$harnessDir" -name __pycache__ -type d -exec rm -rf {} +
+    '';
+
     meta = with lib; {
       description = "Local Unified Harness runtime and native bindings for Vibe";
       homepage = "https://pypi.org/project/mistralai-vibe-local-harness/";
@@ -214,15 +237,10 @@ let
 in
 python.pkgs.buildPythonApplication rec {
   pname = "mistral-vibe";
-  version = "2.25.7";
+  version = vibeVersion;
   pyproject = true;
 
-  src = fetchFromGitHub {
-    owner = "mistralai";
-    repo = "mistral-vibe";
-    tag = "v${version}";
-    hash = "sha256-EcrMo0D9ck/XJhuhYnCiUTKF52pHxQL7XowC2CL3QFk=";
-  };
+  src = vibeSrc;
 
   build-system = with python.pkgs; [
     hatchling
